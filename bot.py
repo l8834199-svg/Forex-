@@ -8,6 +8,10 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
 bot = Bot(token=API_TOKEN)
 
+# رسالة ترحيب أول ما يشتغل البوت
+bot.send_message(chat_id=CHANNEL_ID, text="✅ البوت اشتغل بنجاح وهو جاهز لإرسال التوصيات 🚀")
+
+# إعدادات التداول
 SYMBOLS = ["EUR/USDT", "GBP/USDT", "USD/JPY", "XAU/USDT"]
 TIMEFRAME = "5m"
 EMA_FAST = 50
@@ -18,6 +22,9 @@ TARGET_POINTS = 0.0030
 
 exchange = ccxt.binance()
 
+# ---------------------
+# مؤشرات
+# ---------------------
 def ema(series, period):
     return series.ewm(span=period).mean()
 
@@ -30,19 +37,24 @@ def rsi(series, period=14):
     rs = ma_up / (ma_down + 1e-10)
     return 100 - (100 / (1+rs))
 
+# ---------------------
+# جلب بيانات الشموع
+# ---------------------
 def fetch_ohlcv(symbol):
     df = pd.DataFrame(exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=200),
                       columns=["time","open","high","low","close","volume"])
     df["close"] = df["close"].astype(float)
     return df
 
+# ---------------------
+# توليد الإشارات
+# ---------------------
 def generate_signal(symbol):
     df = fetch_ohlcv(symbol)
     df["ema_fast"] = ema(df["close"], EMA_FAST)
     df["ema_slow"] = ema(df["close"], EMA_SLOW)
     df["rsi"] = rsi(df["close"], RSI_PERIOD)
     last = df.iloc[-1]
-    prev = df.iloc[-2]
 
     if last["close"] > last["ema_fast"] and last["close"] > last["ema_slow"]:
         trend = "buy"
@@ -77,6 +89,9 @@ def generate_signal(symbol):
 
     return (symbol, trend, round(entry,5), stop, target)
 
+# ---------------------
+# إرسال للتليجرام
+# ---------------------
 def send_signal(sig):
     symbol, trend, entry, stop, target = sig
     msg = f"""
@@ -89,13 +104,16 @@ def send_signal(sig):
 """
     bot.send_message(chat_id=CHANNEL_ID, text=msg)
 
+# ---------------------
+# الحلقة الرئيسية
+# ---------------------
 while True:
     try:
         for sym in SYMBOLS:
             sig = generate_signal(sym)
             if sig:
                 send_signal(sig)
-        time.sleep(300)
+        time.sleep(300)  # كل 5 دقائق
     except Exception as e:
         print("خطأ:", e)
         time.sleep(60)
